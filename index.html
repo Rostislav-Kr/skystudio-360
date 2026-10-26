@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyStudio 360°</title>
+  <meta name="description" content="Procedural 360° sky with 12 cloud types, day/sunset/night, eclipses, aircraft contrails and equirectangular PNG export. WebGL, runs in the browser." />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }
+  </script>
+</head>
+<body>
+
+  <canvas id="glCanvas" class="mode-cam"></canvas>
+
+  <!-- Top bar: status, tone, time of day, aircraft, tools -->
+  <header id="topHud">
+    <div class="glass status-pill pointer-auto">
+      <span class="live-dot"></span>
+      <div>
+        <div class="status-line">
+          <strong id="cloudTitleText" class="status-title">SkyStudio 360°</strong>
+          <span id="compassBadge" class="compass-badge mono">360°</span>
+          <span id="fpsBadge" class="mono fps-badge">— FPS</span>
+        </div>
+        <div id="cloudPhysHint" class="status-hint"></div>
+      </div>
+    </div>
+
+    <div class="glass tool-group pointer-auto">
+      <button id="btnLang" type="button" class="pill-btn lang-btn">🌐 EN</button>
+      <button id="btnThemeLibrary" type="button" class="pill-btn library-btn" data-i18n-title="btn.library.title"></button>
+
+      <span class="sep">|</span>
+      <button type="button" data-ctone="light" class="pill-btn" data-i18n="btn.tone.light" data-i18n-title="btn.tone.light.title"></button>
+      <button type="button" data-ctone="mixed" class="pill-btn active-ctone" data-i18n="btn.tone.mixed" data-i18n-title="btn.tone.mixed.title"></button>
+      <button type="button" data-ctone="dark" class="pill-btn" data-i18n="btn.tone.dark" data-i18n-title="btn.tone.dark.title"></button>
+      <span class="sep">|</span>
+
+      <button id="btnTodDay" type="button" class="pill-btn active-tod" data-i18n="btn.day" data-i18n-title="btn.day.title"></button>
+      <button id="btnTodSunset" type="button" class="pill-btn" data-i18n="btn.sunset" data-i18n-title="btn.sunset.title"></button>
+      <button id="btnTodNight" type="button" class="pill-btn" data-i18n="btn.night" data-i18n-title="btn.night.title"></button>
+      <button id="btnMoonToggle" type="button" class="pill-btn" data-i18n-title="btn.moon.title"></button>
+      <button id="btnSolarEclipse" type="button" class="pill-btn" data-i18n="btn.solar" data-i18n-title="btn.solar.title"></button>
+      <button id="btnLunarEclipse" type="button" class="pill-btn" data-i18n="btn.lunar" data-i18n-title="btn.lunar.title"></button>
+      <button id="btnSunRaysToggle" type="button" class="pill-btn" data-i18n-title="btn.rays.title"></button>
+      <button id="btnBakeToggle" type="button" class="pill-btn active-auto" data-i18n-title="btn.bake.title"></button>
+      <button id="btnAutoEvolveToggle" type="button" class="pill-btn active-auto" data-i18n-title="btn.evo.title"></button>
+      <button id="btnPhysPanelToggle" type="button" class="pill-btn" data-i18n="btn.phys" data-i18n-title="btn.phys.title"></button>
+      <button id="btnPlaneToggle" type="button" class="pill-btn active-auto" data-i18n-title="btn.planes.title">✈️</button>
+      <button id="btnPlaneType" type="button" class="pill-btn plane-type-btn" data-i18n-title="btn.planeType.title"></button>
+      <button id="btnRespawnPlane" type="button" class="pill-btn accent-btn" data-i18n-title="btn.respawn.title">🚀</button>
+      <button id="btnNewSeed" type="button" class="pill-btn accent-btn" data-i18n="btn.seed" data-i18n-title="btn.seed.title"></button>
+      <button id="btnToggleEdit" type="button" class="pill-btn edit-btn" data-i18n-title="btn.edit.title"></button>
+      <button id="btnEquirectMode" type="button" class="pill-btn" data-i18n-title="btn.equirect.title"></button>
+      <button id="btnExport2to1" type="button" class="pill-btn export-btn" data-i18n-title="btn.export.title">💾 PNG</button>
+      <button id="btnToggleDock" type="button" class="pill-btn" data-i18n-title="btn.dock.title">👁</button>
+    </div>
+
+    <!-- Editing tools: shown only in edit mode -->
+    <div id="editToolsGroup" class="glass tool-group pointer-auto edit-only edit-tools">
+      <button type="button" data-tool="cam" class="pill-btn active-tool" data-i18n="tool.cam" data-i18n-title="tool.cam.title"></button>
+      <button type="button" data-tool="paint_ci" class="pill-btn" data-i18n="tool.paint_ci" data-i18n-title="tool.paint_ci.title"></button>
+      <button type="button" data-tool="paint_cu" class="pill-btn" data-i18n="tool.paint_cu" data-i18n-title="tool.paint_cu.title"></button>
+      <button type="button" data-tool="paint_cc" class="pill-btn" data-i18n="tool.paint_cc" data-i18n-title="tool.paint_cc.title"></button>
+      <button type="button" data-tool="erase" class="pill-btn" data-i18n="tool.erase" data-i18n-title="tool.erase.title"></button>
+      <span class="sep">|</span>
+      <button type="button" data-bmode="light" class="pill-btn active-bmode" data-i18n="bmode.light" data-i18n-title="bmode.light.title"></button>
+      <button type="button" data-bmode="soft3d" class="pill-btn" data-i18n="bmode.soft3d" data-i18n-title="bmode.soft3d.title"></button>
+      <button type="button" data-bmode="dense" class="pill-btn" data-i18n="bmode.dense" data-i18n-title="bmode.dense.title"></button>
+      <span class="sep">|</span>
+      <button type="button" data-tool="wind" class="pill-btn" data-i18n="tool.wind" data-i18n-title="tool.wind.title"></button>
+      <button type="button" data-tool="sun" class="pill-btn" data-i18n="tool.sun" data-i18n-title="tool.sun.title"></button>
+      <button type="button" data-tool="moon" class="pill-btn" data-i18n="tool.moon" data-i18n-title="tool.moon.title"></button>
+    </div>
+  </header>
+
+  <!-- Cloud physics card: thermodynamics T(z) and evolution modes -->
+  <aside id="physicsHudCard" class="glass pointer-auto hidden-phys">
+    <div class="phys-head">
+      <span class="phys-title"><span class="live-dot"></span><span data-i18n="phys.title"></span></span>
+      <div class="phys-head-right">
+        <span id="physPhaseBadge" class="mono phase-badge"></span>
+        <button id="btnMinimizePhys" type="button" class="pill-btn phys-close" data-i18n-title="phys.close.title">✕</button>
+      </div>
+    </div>
+
+    <div class="phys-metrics-grid">
+      <div data-i18n-title="phys.lcl.title">
+        <span class="phys-m-lbl" data-i18n="phys.lcl"></span>
+        <span id="physValLCL" class="phys-m-val mono" style="color:#38bdf8;"></span>
+      </div>
+      <div data-i18n-title="phys.el.title">
+        <span class="phys-m-lbl" data-i18n="phys.el"></span>
+        <span id="physValEL" class="phys-m-val mono" style="color:#a78bfa;"></span>
+      </div>
+      <div data-i18n-title="phys.cape.title">
+        <span class="phys-m-lbl" data-i18n="phys.cape"></span>
+        <span id="physValCAPE" class="phys-m-val mono" style="color:#fbbf24;"></span>
+      </div>
+      <div data-i18n-title="phys.shear.title">
+        <span class="phys-m-lbl" data-i18n="phys.shear"></span>
+        <span id="physValShear" class="phys-m-val mono" style="color:#34d399;"></span>
+      </div>
+    </div>
+
+    <div class="phys-sounding">
+      <div class="sounding-box">
+        <canvas id="soundingCanvas" width="122" height="78"></canvas>
+      </div>
+      <div class="phys-mech">
+        <strong id="physMechTitle"></strong>
+        <p id="physMechDesc"></p>
+      </div>
+    </div>
+
+    <div class="evo-block">
+      <div class="evo-status-row">
+        <span data-i18n="phys.evoMode"></span>
+        <span id="evoStatusText" class="mono" style="color:#34d399;"></span>
+      </div>
+      <div class="evo-grid">
+        <button type="button" data-evomode="boil" class="evo-btn active" data-i18n="evo.boil" data-i18n-title="evo.boil.title"></button>
+        <button type="button" data-evomode="atlas" class="evo-btn" data-i18n="evo.atlas" data-i18n-title="evo.atlas.title"></button>
+        <button type="button" data-evomode="diurnal" class="evo-btn" data-i18n="evo.diurnal" data-i18n-title="evo.diurnal.title"></button>
+        <button type="button" data-evomode="front" class="evo-btn" data-i18n="evo.front" data-i18n-title="evo.front.title"></button>
+      </div>
+    </div>
+
+    <div class="phys-sliders">
+      <div class="ctrl-box" data-i18n-title="phys.thermals.title">
+        <div class="ctrl-head">
+          <span data-i18n="phys.thermals"></span>
+          <span id="valThermals" class="mono" style="color:#34d399;"></span>
+        </div>
+        <input id="sliderThermals" type="range" min="0.00" max="1.50" step="0.05" value="0.65">
+      </div>
+      <div class="ctrl-box" data-i18n-title="phys.windShear.title">
+        <div class="ctrl-head">
+          <span data-i18n="phys.windShear"></span>
+          <span id="valShear" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderShear" type="range" min="0.00" max="1.20" step="0.05" value="0.45">
+      </div>
+    </div>
+  </aside>
+
+  <!-- Preset library -->
+  <section id="themeLibraryModal" class="glass pointer-auto">
+    <div class="lib-head">
+      <div>
+        <strong class="lib-title" data-i18n="lib.title"></strong>
+        <span class="lib-sub" data-i18n="lib.sub"></span>
+      </div>
+      <button id="btnCloseLibrary" type="button" class="pill-btn" data-i18n="lib.close"></button>
+    </div>
+    <div id="themeGrid" class="theme-grid"></div>
+  </section>
+
+  <!-- Bottom dock: cloud types + sliders -->
+  <section id="bottomDock" class="glass">
+    <div id="speciesStrip" class="species-strip"></div>
+
+    <div class="controls-row">
+      <div class="ctrl-box" data-i18n-title="ctl.coverage.title">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.coverage"></span>
+          <span id="valCoverage" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderCoverage" type="range" min="0.00" max="1.00" step="0.01" value="0.52">
+      </div>
+
+      <div class="ctrl-box highlight-ctrl" data-i18n-title="ctl.dark.title">
+        <div class="ctrl-head">
+          <span class="hl-label" data-i18n="ctl.dark"></span>
+          <span id="valCloudDark" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderCloudDark" type="range" min="0.00" max="1.00" step="0.01" value="0.50">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.sunEl"></span>
+          <span id="valSunEl" class="mono" style="color:#fbbf24;"></span>
+        </div>
+        <input id="sliderSunEl" type="range" min="-25" max="75" step="1" value="34">
+      </div>
+
+      <div class="ctrl-box highlight-ctrl" data-i18n-title="ctl.sunBright.title">
+        <div class="ctrl-head">
+          <span class="hl-label sun" data-i18n="ctl.sunBright"></span>
+          <span id="valSunBright" class="mono" style="color:#fbbf24;"></span>
+        </div>
+        <input id="sliderSunBright" type="range" min="0.30" max="3.00" step="0.05" value="1.35">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.moonPhase"></span>
+          <span id="valMoonPhase" class="mono" style="color:#c4b5fd;"></span>
+        </div>
+        <input id="sliderMoonPhase" type="range" min="0.00" max="1.00" step="0.01" value="1.00">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.moonBright"></span>
+          <span id="valMoonBright" class="mono" style="color:#fde68a;"></span>
+        </div>
+        <input id="sliderMoonBright" type="range" min="0.30" max="3.00" step="0.05" value="1.50">
+      </div>
+
+      <div class="ctrl-box edit-only" data-i18n-title="ctl.brushFlow.title">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.brushFlow"></span>
+          <span id="valBrushFlow" class="mono" style="color:#a78bfa;"></span>
+        </div>
+        <input id="sliderBrushFlow" type="range" min="0.08" max="1.00" step="0.02" value="0.30">
+      </div>
+
+      <div class="ctrl-box edit-only">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.brush"></span>
+          <span id="valBrush" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderBrush" type="range" min="0.04" max="0.26" step="0.01" value="0.13">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.scale"></span>
+          <span id="valScale" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderScale" type="range" min="0.55" max="1.85" step="0.05" value="1.00">
+      </div>
+
+      <div class="ctrl-box" data-i18n-title="ctl.trail.title">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.trail"></span>
+          <span id="valTrailSpread" class="mono" style="color:#fbbf24;"></span>
+        </div>
+        <input id="sliderTrailSpread" type="range" min="0.50" max="3.00" step="0.05" value="1.50">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.wind"></span>
+          <span id="valWind" class="mono" style="color:#38bdf8;"></span>
+        </div>
+        <input id="sliderWind" type="range" min="0.0" max="2.5" step="0.05" value="0.50">
+      </div>
+
+      <div class="ctrl-box">
+        <div class="ctrl-head">
+          <span data-i18n="ctl.fov"></span>
+          <span id="valFov" class="mono" style="color:#7dd3fc;"></span>
+        </div>
+        <input id="sliderFov" type="range" min="35" max="100" step="1" value="68">
+      </div>
+
+      <div class="dock-buttons">
+        <button id="clean_canvas" type="button" class="pill-btn edit-only" data-i18n="btn.canvas" data-i18n-title="btn.canvas.title"></button>
+        <button id="btnClearBrush" type="button" class="pill-btn edit-only" data-i18n-title="btn.clearBrush.title">🧹</button>
+        <button id="btnPrev" type="button" class="pill-btn" data-i18n-title="btn.prev.title">⏮</button>
+        <button id="btnNext" type="button" class="pill-btn" data-i18n-title="btn.next.title">⏭</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="glass"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

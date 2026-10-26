@@ -1,0 +1,23 @@
+{
+  "name": "skystudio-360",
+  "version": "1.0.0",
+  "description": "Procedural 360° sky in the browser: 12 cloud types, day/sunset/night, eclipses, aircraft contrails and equirectangular PNG export (WebGL, three.js).",
+  "type": "module",
+  "license": "MIT",
+  "author": "Rostislav-Kr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rostislav-Kr/skystudio-360.git"
+  },
+  "keywords": ["sky", "clouds", "skybox", "panorama", "equirectangular", "webgl", "three.js", "shader", "procedural", "meteorology"],
+  "scripts": {
+    "dev": "npx --yes serve -l 5173 .",
+    "build": "node scripts/build-standalone.mjs"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
