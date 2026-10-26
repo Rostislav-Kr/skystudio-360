@@ -1597,8 +1597,11 @@ export function buildDerivedShaders(src) {
     src.slice(0, idxStar) +
     `      void main() {
         float az = (vUv.x - 0.5) * 2.0 * PI;
-        float syBake = pow(clamp(vUv.y, 0.0, 1.0), 1.5384615);
-        float cosEl = sqrt(max(0.0, 1.0 - syBake * syBake));
+        // Rows are spaced by elevation (denser near the horizon, finite near the zenith),
+        // so the polar cap of the equirect texture stays tiny and shows no radial streaks.
+        float elBake = 0.5 * PI * pow(clamp(vUv.y, 0.0, 1.0), 1.4285714);
+        float syBake = sin(elBake);
+        float cosEl = cos(elBake);
         vec3 rd = vec3(sin(az) * cosEl, syBake, cos(az) * cosEl);
         float sy = clamp(rd.y, 0.0, 1.0);
         float horFade = smoothstep(-0.015, 0.09, rd.y);
@@ -1632,7 +1635,7 @@ export function buildDerivedShaders(src) {
         float r2 = dot(qSkyPt, qSkyPt);
         float syEst = clamp(1.0 / (1.0 + r2 * 0.42), 0.0, 1.0);
         float uDome = atan(qSkyPt.x, qSkyPt.y) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(syEst, 0.65);
+        float vDome = pow(asin(syEst) / (0.5 * PI), 0.7);
         return texture2D(uSkyRayLutTex, vec2(uDome, vDome)).r * 1.65;
       }
 ` +
@@ -1642,7 +1645,7 @@ export function buildDerivedShaders(src) {
     src.slice(idxSunDir, idxFineErode) +
     src.slice(idxThermal, idxEffDark) +
     `        float uDome = atan(rd.x, rd.z) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(clamp(rd.y, 0.0, 1.0), 0.65);
+        float vDome = pow(asin(clamp(rd.y, 0.0, 1.0)) / (0.5 * PI), 0.7);
         vec4 bCloud = texture2D(uSkyRayLutTex, vec2(uDome, vDome));
         float subHorFade = smoothstep(-0.015, 0.005, rd.y);
         float micro = (noise(qFPersp * 14.0) - 0.5);

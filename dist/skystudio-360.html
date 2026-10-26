@@ -6006,8 +6006,11 @@ void main() {
         gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
       }`;function en(i,e){let t=i.indexOf(e);if(t<0)throw new Error("SkyStudio shader anchor not found: "+e.trim().slice(0,60));return t}function ac(i){let e=en(i,"      vec3 evalStarLayerSpherical("),t=en(i,"      // Samples both procedural cloud optical depth"),n=en(i,"      void main() {"),s=en(i,"        float denom = (pow(max(0.025, sy), 0.68) + 0.36) * 0.95;"),r=en(i,"        float brushCumulus    = 0.0;"),a=en(i,"        vec3 sunDir = normalize(uSunDir);"),o=en(i,"        float fineErode = (brushErase > 0.005)"),l=en(i,"        float thermalWave = (sin(uEvoTime * 0.35 + q.x * 1.6)"),c=en(i,"        float sunCenterTau = sampleFastCloudGap("),u=en(i,"        float effDarkRatio = (isStorm > 0.5)"),f=en(i,"        // Compute upper Cirrus veil color"),d=i.slice(0,e)+`      void main() {
         float az = (vUv.x - 0.5) * 2.0 * PI;
-        float syBake = pow(clamp(vUv.y, 0.0, 1.0), 1.5384615);
-        float cosEl = sqrt(max(0.0, 1.0 - syBake * syBake));
+        // Rows are spaced by elevation (denser near the horizon, finite near the zenith),
+        // so the polar cap of the equirect texture stays tiny and shows no radial streaks.
+        float elBake = 0.5 * PI * pow(clamp(vUv.y, 0.0, 1.0), 1.4285714);
+        float syBake = sin(elBake);
+        float cosEl = cos(elBake);
         vec3 rd = vec3(sin(az) * cosEl, syBake, cos(az) * cosEl);
         float sy = clamp(rd.y, 0.0, 1.0);
         float horFade = smoothstep(-0.015, 0.09, rd.y);
@@ -6033,12 +6036,12 @@ void main() {
         float r2 = dot(qSkyPt, qSkyPt);
         float syEst = clamp(1.0 / (1.0 + r2 * 0.42), 0.0, 1.0);
         float uDome = atan(qSkyPt.x, qSkyPt.y) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(syEst, 0.65);
+        float vDome = pow(asin(syEst) / (0.5 * PI), 0.7);
         return texture2D(uSkyRayLutTex, vec2(uDome, vDome)).r * 1.65;
       }
 `+i.slice(n,r)+`        float erodeSpray = 0.0;
 `+i.slice(a,o)+i.slice(l,u)+`        float uDome = atan(rd.x, rd.z) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(clamp(rd.y, 0.0, 1.0), 0.65);
+        float vDome = pow(asin(clamp(rd.y, 0.0, 1.0)) / (0.5 * PI), 0.7);
         vec4 bCloud = texture2D(uSkyRayLutTex, vec2(uDome, vDome));
         float subHorFade = smoothstep(-0.015, 0.005, rd.y);
         float micro = (noise(qFPersp * 14.0) - 0.5);
