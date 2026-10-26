@@ -1,6 +1,6 @@
 // SkyStudio 360° — entry point: WebGL init, UI init and the animation loop.
 
-import { state, launchNewFlight, getFlightTypeSpeedMult, markEnvDirty } from './state.js';
+import { state, launchNewFlight, getFlightTypeSpeedMult } from './state.js';
 import { SPECIES } from './data/species.js';
 import { L, t } from './i18n.js';
 import { initRenderer, drawScene, getCanvas } from './renderer.js';
@@ -78,7 +78,6 @@ function start() {
 
   let lastTime = performance.now();
   let frames = 0, fpsLast = lastTime;
-  let lastEvoBake = lastTime;
   const fpsBadge = document.getElementById('fpsBadge');
 
   function animate(now) {
@@ -91,17 +90,10 @@ function start() {
     state.windOffset[1] += Math.sin(state.windAngle) * 0.0035 * dtWind;
     state.brushWindU = (state.brushWindU + Math.cos(state.windAngle) * 0.00045 * dtWind + 1.0) % 1.0;
 
-    if (state.autoEvolve) {
-      updateEvolution(dt);
-      // With baking on, the dome is otherwise frozen: re-bake it periodically so evolution is visible.
-      if (state.useBaking && now - lastEvoBake > 1500) {
-        markEnvDirty();
-        lastEvoBake = now;
-      }
-    }
+    if (state.autoEvolve) updateEvolution(dt);
     tickBrush(dt);
     updateFlights(dt);
-    drawScene();
+    drawScene(now);
 
     frames++;
     if (now - fpsLast >= 500) {

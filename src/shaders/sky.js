@@ -1629,14 +1629,36 @@ export function buildDerivedShaders(src) {
     src.slice(0, idxSampleGap) +
     `      uniform float uDomeWindShift;
       uniform vec2  uBakedWindOffset;
+      // Previous baked dome, cross-faded into the current one so cloud evolution looks continuous.
+      uniform sampler2D uSkyRayLutTexPrev;
+      uniform float uDomeWindShiftPrev;
+      uniform vec2  uBakedWindOffsetPrev;
+      uniform float uDomeBlend;
 
-      float sampleFastCloudGap(vec2 pDome, float cRot, float sRot, float baseCovShift, float isStorm) {
-        vec2 qSkyPt = pDome * uScale + uBakedWindOffset;
+      float domeV(float sinEl) {
+        return pow(asin(clamp(sinEl, 0.0, 1.0)) / (0.5 * PI), 0.7);
+      }
+
+      vec4 sampleDomeDir(vec3 d) {
+        float az = atan(d.x, d.z) / (2.0 * PI) + 0.5;
+        float v = domeV(d.y);
+        vec4 cur  = texture2D(uSkyRayLutTex,     vec2(az - uDomeWindShift, v));
+        vec4 prev = texture2D(uSkyRayLutTexPrev, vec2(az - uDomeWindShiftPrev, v));
+        return mix(prev, cur, uDomeBlend);
+      }
+
+      float gapFromDome(sampler2D tex, vec2 pDome, vec2 bakedOffset, float shift) {
+        vec2 qSkyPt = pDome * uScale + bakedOffset;
         float r2 = dot(qSkyPt, qSkyPt);
         float syEst = clamp(1.0 / (1.0 + r2 * 0.42), 0.0, 1.0);
-        float uDome = atan(qSkyPt.x, qSkyPt.y) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(asin(syEst) / (0.5 * PI), 0.7);
-        return texture2D(uSkyRayLutTex, vec2(uDome, vDome)).r * 1.65;
+        float uDome = atan(qSkyPt.x, qSkyPt.y) / (2.0 * PI) + 0.5 - shift;
+        return texture2D(tex, vec2(uDome, domeV(syEst))).r * 1.65;
+      }
+
+      float sampleFastCloudGap(vec2 pDome, float cRot, float sRot, float baseCovShift, float isStorm) {
+        float cur  = gapFromDome(uSkyRayLutTex,     pDome, uBakedWindOffset,     uDomeWindShift);
+        float prev = gapFromDome(uSkyRayLutTexPrev, pDome, uBakedWindOffsetPrev, uDomeWindShiftPrev);
+        return mix(prev, cur, uDomeBlend);
       }
 ` +
     src.slice(idxMain, idxBrushCu) +
@@ -1644,9 +1666,7 @@ export function buildDerivedShaders(src) {
 ` +
     src.slice(idxSunDir, idxFineErode) +
     src.slice(idxThermal, idxEffDark) +
-    `        float uDome = atan(rd.x, rd.z) / (2.0 * PI) + 0.5 - uDomeWindShift;
-        float vDome = pow(asin(clamp(rd.y, 0.0, 1.0)) / (0.5 * PI), 0.7);
-        vec4 bCloud = texture2D(uSkyRayLutTex, vec2(uDome, vDome));
+    `        vec4 bCloud = sampleDomeDir(rd);
         float subHorFade = smoothstep(-0.015, 0.005, rd.y);
         float micro = (noise(qFPersp * 14.0) - 0.5);
         float cloudDens    = bCloud.r * subHorFade;

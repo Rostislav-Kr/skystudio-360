@@ -1,6 +1,12 @@
 // WebGL rendering: three ShaderMaterials sharing one uniform set.
-//  - bakeDomeMat:   renders the 360° cloud dome into a 2048×1024 texture (only when clouds change)
+//  - bakeDomeMat:   renders the 360° cloud dome into a 2048×1024 texture
 //  - fastScreenMat: per-frame pass that reads the baked dome (default)
+//
+// Dome baking:
+//  - when the user changes the clouds, the dome is re-baked at once (full frame);
+//  - while "evolution" is on, snapshots are baked a few rows per frame into a spare
+//    target and the screen pass cross-fades between the two latest snapshots, so the
+//    clouds morph continuously instead of jumping, and no single frame pays for a full bake.
 //  - liveScreenMat: per-frame pass that evaluates every noise octave (baking off)
 
 import {
@@ -29,13 +35,22 @@ import { createMoonCanvas } from './moon.js';
 
 const DOME_BAKE_W = 2048;
 const DOME_BAKE_H = 1024;
+const EVO_PERIOD = 2.0;   // seconds between evolution snapshots (= cross-fade length)
+const BAKE_STRIPS = 16;   // an evolution snapshot is baked over this many frames
 
 let renderer, scene, camera, screenQuad;
 let bakeDomeMat, fastScreenMat, liveScreenMat;
-let domeBakeTarget, dummyTex, moonTex;
+let dummyTex, moonTex;
 let uniforms;
-let bakedWindOffset = [0.0, 0.0];
-let bakedBrushWindU = 0.0;
+
+// Three dome targets: the previous snapshot, the current one, and one being baked.
+const domes = [];
+let iPrev = 0, iCur = 0, iNext = 1;
+let blendStart = 0;       // seconds
+let strip = -1;           // next strip to bake into domes[iNext]; -1 = idle
+let bakeSnap = null;      // evolution state frozen for the strip bake
+let bakeStartSec = 0;
+let fadePeriod = EVO_PERIOD; // stretched on slow GPUs so the morph never stalls between snapshots
 
 export function getCanvas() { return renderer.domElement; }
 
@@ -64,26 +79,33 @@ export function initRenderer(canvas) {
   moonTex.generateMipmaps = false;
   moonTex.needsUpdate = true;
 
-  domeBakeTarget = new WebGLRenderTarget(DOME_BAKE_W, DOME_BAKE_H, {
-    wrapS: RepeatWrapping,
-    wrapT: ClampToEdgeWrapping,
-    minFilter: LinearFilter,
-    magFilter: LinearFilter,
-    format: RGBAFormat,
-    type: UnsignedByteType,
-    depthBuffer: false,
-    stencilBuffer: false,
-    generateMipmaps: false
-  });
+  for (let i = 0; i < 3; i++) {
+    const target = new WebGLRenderTarget(DOME_BAKE_W, DOME_BAKE_H, {
+      wrapS: RepeatWrapping,
+      wrapT: ClampToEdgeWrapping,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+      format: RGBAFormat,
+      type: UnsignedByteType,
+      depthBuffer: false,
+      stencilBuffer: false,
+      generateMipmaps: false
+    });
+    domes.push({ target, windOffset: [0, 0], brushWindU: 0 });
+  }
 
   uniforms = {
     uPaintTex:        { value: paintTex },
     uMoonTex:         { value: moonTex },
     uBakedTex:        { value: dummyTex },
-    uSkyRayLutTex:    { value: domeBakeTarget.texture },
+    uSkyRayLutTex:    { value: domes[0].target.texture },
+    uSkyRayLutTexPrev:{ value: domes[0].target.texture },
     uUseBaking:       { value: 1.0 },
     uDomeWindShift:   { value: 0.0 },
     uBakedWindOffset: { value: new Vector2() },
+    uDomeWindShiftPrev:   { value: 0.0 },
+    uBakedWindOffsetPrev: { value: new Vector2() },
+    uDomeBlend:       { value: 1.0 },
     uResolution:      { value: new Vector2(1280, 720) },
     uTime:            { value: 0.0 },
     uEvoTime:         { value: 0.0 },
@@ -161,21 +183,37 @@ export function resize() {
   if (canvas.width !== w || canvas.height !== h) renderer.setSize(w, h, false);
 }
 
-function syncUniforms(w, h, isBakingDome) {
-  const u = uniforms;
-  u.uSkyRayLutTex.value = isBakingDome ? dummyTex : domeBakeTarget.texture;
-  u.uUseBaking.value = state.useBaking ? 1.0 : 0.0;
-  u.uDomeWindShift.value = state.brushWindU - bakedBrushWindU;
-  u.uBakedWindOffset.value.set(bakedWindOffset[0], bakedWindOffset[1]);
+function takeSnapshot() {
+  return { evoTime: state.evoTime, windOffset: [state.windOffset[0], state.windOffset[1]], brushWindU: state.brushWindU };
+}
 
+/** snap: frozen evolution state when baking a dome, or null for the screen pass. */
+function syncUniforms(w, h, snap, blend = 1.0) {
+  const u = uniforms;
+  if (snap) {
+    u.uSkyRayLutTex.value = dummyTex;
+    u.uSkyRayLutTexPrev.value = dummyTex;
+  } else {
+    const cur = domes[iCur], prev = domes[iPrev];
+    u.uSkyRayLutTex.value = cur.target.texture;
+    u.uSkyRayLutTexPrev.value = prev.target.texture;
+    u.uDomeWindShift.value = state.brushWindU - cur.brushWindU;
+    u.uBakedWindOffset.value.set(cur.windOffset[0], cur.windOffset[1]);
+    u.uDomeWindShiftPrev.value = state.brushWindU - prev.brushWindU;
+    u.uBakedWindOffsetPrev.value.set(prev.windOffset[0], prev.windOffset[1]);
+    u.uDomeBlend.value = blend;
+  }
+  u.uUseBaking.value = state.useBaking ? 1.0 : 0.0;
+
+  const evo = snap || state;
   u.uResolution.value.set(w, h);
   u.uTime.value = state.time;
-  u.uEvoTime.value = state.evoTime;
+  u.uEvoTime.value = evo.evoTime;
   u.uThermals.value = state.thermals;
   u.uWindShear.value = state.windShear;
-  u.uWindOffset.value.set(state.windOffset[0], state.windOffset[1]);
+  u.uWindOffset.value.set(evo.windOffset[0], evo.windOffset[1]);
   u.uWindVec.value.set(Math.cos(state.windAngle) * 0.0035, Math.sin(state.windAngle) * 0.0035);
-  u.uBrushWindU.value = state.brushWindU;
+  u.uBrushWindU.value = evo.brushWindU;
 
   u.uSeedMacro.value.set(state.seedMacro[0], state.seedMacro[1]);
   u.uSeedBillow.value.set(state.seedBillow[0], state.seedBillow[1]);
@@ -224,23 +262,73 @@ function syncUniforms(w, h, isBakingDome) {
   u.uShowSunRays.value = state.showSunRays ? 1.0 : 0.0;
 }
 
-function bakeCloudDome360() {
-  if (!state.useBaking || !state.domeDirty) return;
-  state.domeDirty = false;
-  bakedWindOffset = [state.windOffset[0], state.windOffset[1]];
-  bakedBrushWindU = state.brushWindU;
-
-  syncUniforms(DOME_BAKE_W, DOME_BAKE_H, true);
+/** Bake the whole dome, or one horizontal strip of it, into dome `d` using snapshot `snap`. */
+function bakeDome(d, snap, stripIdx = null) {
+  d.windOffset = [snap.windOffset[0], snap.windOffset[1]];
+  d.brushWindU = snap.brushWindU;
+  syncUniforms(DOME_BAKE_W, DOME_BAKE_H, snap);
   screenQuad.material = bakeDomeMat;
-  renderer.setRenderTarget(domeBakeTarget);
+  const target = d.target;
+  if (stripIdx !== null) {
+    const h = DOME_BAKE_H / BAKE_STRIPS;
+    target.scissor.set(0, stripIdx * h, DOME_BAKE_W, h);
+    target.scissorTest = true;
+  }
+  renderer.setRenderTarget(target);
   renderer.render(scene, camera);
+  target.scissorTest = false;
   renderer.setRenderTarget(null);
 }
 
-export function drawScene() {
+function thirdIndex(a, b) {
+  for (let i = 0; i < 3; i++) if (i !== a && i !== b) return i;
+  return 0;
+}
+
+/** Keeps the baked domes up to date; returns the cross-fade weight of the current dome. */
+function updateDomes(nowSec) {
+  if (state.domeDirty) {
+    // The user changed the clouds: show the new shape immediately.
+    state.domeDirty = false;
+    bakeDome(domes[iCur], takeSnapshot());
+    iPrev = iCur;
+    iNext = thirdIndex(iCur, -1);
+    strip = -1;
+    blendStart = nowSec;
+    return 1.0;
+  }
+
+  if (state.autoEvolve) {
+    if (strip === -1) {
+      bakeSnap = takeSnapshot();
+      bakeStartSec = nowSec;
+      strip = 0;
+    }
+    if (strip >= 0 && strip < BAKE_STRIPS) {
+      bakeDome(domes[iNext], bakeSnap, strip);
+      strip++;
+      if (strip === BAKE_STRIPS) fadePeriod = Math.max(EVO_PERIOD, (nowSec - bakeStartSec) * 1.1);
+    }
+    const t = (nowSec - blendStart) / fadePeriod;
+    if (strip === BAKE_STRIPS && (t >= 1.0 || iPrev === iCur)) {
+      const newPrev = iCur;
+      iCur = iNext;
+      iPrev = newPrev;
+      iNext = thirdIndex(iPrev, iCur);
+      strip = -1;
+      blendStart = nowSec;
+    }
+  }
+
+  if (iPrev === iCur) return 1.0;
+  const t = Math.min(1.0, Math.max(0.0, (nowSec - blendStart) / fadePeriod));
+  return t * t * (3.0 - 2.0 * t);
+}
+
+export function drawScene(nowMs = performance.now()) {
   const canvas = renderer.domElement;
-  if (state.useBaking) bakeCloudDome360();
-  syncUniforms(canvas.width, canvas.height, false);
+  const blend = state.useBaking ? updateDomes(nowMs / 1000) : 1.0;
+  syncUniforms(canvas.width, canvas.height, null, blend);
   screenQuad.material = state.useBaking ? fastScreenMat : liveScreenMat;
   renderer.setRenderTarget(null);
   renderer.render(scene, camera);
