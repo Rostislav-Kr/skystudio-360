@@ -55,11 +55,11 @@ Requires Node.js 18+.
 
 ```bash
 npm install
-npm run dev      # serves the folder at http://localhost:5173 (three.js is loaded from a CDN)
+npm run dev      # serves the folder at http://localhost:5173
 npm run build    # writes dist/skystudio-360.html — a single self-contained file
 ```
 
-The modular version (`index.html`) loads three.js from jsDelivr via an import map; the standalone build bundles it with esbuild, so it works offline.
+The modular version (`index.html`) loads three.js from `vendor/` via an import map and needs to be served over HTTP (opening it by double-click redirects to the standalone build). The standalone build bundles everything with esbuild, so it works offline.
 
 ## Roadmap
 
@@ -72,4 +72,4 @@ Issues and pull requests are welcome.
 
 ## License
 
-[MIT](LICENSE) © Rostislav-Kr. three.js is MIT-licensed by its authors.
+[MIT](LICENSE) © Rostislav-Kr. three.js (`vendor/`) is MIT-licensed by its authors, see `vendor/three.LICENSE`.

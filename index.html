@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SkyStudio 360°</title>
   <meta name="description" content="Procedural 360° sky with 12 cloud types, day/sunset/night, eclipses, aircraft contrails and equirectangular PNG export. WebGL, runs in the browser." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>" />
+  <script>
+    // Opened by double-click: browsers block ES modules on file://, so switch to the single-file build.
+    if (location.protocol === 'file:') location.replace('dist/skystudio-360.html' + location.search);
+  </script>
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }
+    { "imports": { "three": "./vendor/three.module.min.js" } }
   </script>
 </head>
 <body>

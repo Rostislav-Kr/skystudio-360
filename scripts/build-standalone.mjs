@@ -28,6 +28,8 @@ const swap = (from, to) => {
 
 swap('<link rel="stylesheet" href="css/style.css" />', `<style>\n${css}</style>`);
 html = html.replace(/\s*<script type="importmap">[\s\S]*?<\/script>/, '');
+// The file:// redirect belongs to index.html only.
+html = html.replace(/\s*<script>\s*\/\/ Opened by double-click[\s\S]*?<\/script>/, '');
 // "</script" inside the bundle would close the tag early.
 swap('<script type="module" src="src/main.js"></script>', `<script>\n${js.replace(/<\/script/gi, '<\\/script')}</script>`);
 

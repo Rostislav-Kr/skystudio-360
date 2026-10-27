@@ -43,7 +43,7 @@
 
 ```bash
 npm install
-npm run dev      # локальный сервер http://localhost:5173 (three.js грузится с CDN)
+npm run dev      # локальный сервер http://localhost:5173
 npm run build    # собирает dist/skystudio-360.html — один самодостаточный файл
 ```
 
@@ -58,4 +58,4 @@ npm run build    # собирает dist/skystudio-360.html — один сам�
 
 ## Лицензия
 
-[MIT](LICENSE) © Rostislav-Kr. three.js распространяется по лицензии MIT его авторами.
+[MIT](LICENSE) © Rostislav-Kr. three.js (`vendor/`) распространяется его авторами по лицензии MIT, см. `vendor/three.LICENSE`.
